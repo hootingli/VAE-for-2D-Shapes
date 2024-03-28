@@ -1,6 +1,6 @@
 import torch
-import torch.nn.functional as F
 from torch import nn
+
 
 
 # Input image -> Hidden dim -> mean, std -> Parametrization Trick _> Decoder -> Output image
@@ -62,6 +62,8 @@ class VariationalAutoEncoder(nn.Module):
         z_reparametrized = mu + sigma*epsilon
         x_reconstructed = self.decode(z_reparametrized)
         return x_reconstructed, mu, sigma
+    
+
 
 if __name__ == "__main__":
     x = torch.randn(4, 28*28) #28x28 = 784
@@ -70,4 +72,4 @@ if __name__ == "__main__":
     print(x_reconstructed)
     print(mu)
     print(sigma)
-    print(vae(x).shape)
+    # print(vae(x).shape)
