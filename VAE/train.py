@@ -1,100 +1,138 @@
 import torch
-from torch import optim
-from ResVAE import ResVariationalAutoEncoder  # Assuming you have a VAE model defined in 'model.py'
+from tqdm import tqdm
+from torch import nn, optim
+from model import VariationalAutoEncoder  # Assuming you have a VAE model defined in 'model.py'
 from torch.utils.data import TensorDataset, DataLoader
 import h5py
+import pandas as pd
 import numpy as np
+import scipy.io
+from torch.optim import lr_scheduler
+from deeper_model import DeepVariationalAutoEncoder
+
+def adjust_learning_rate(optimizer, epoch):
+    """Sets the learning rate to the initial LR decayed by 10 every 100 epochs"""
+    NEW_LR_RATE = LR_RATE * (0.75 ** (epoch // 20))
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = NEW_LR_RATE
+
 
 # Configuration
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-INPUT_DIM = 100  # Adjusted input dimension to match your complex data
-H_DIM = 32
-H_LAYERS = [2,2,2]
-Z_DIM = 16
-NUM_EPOCHS = 5000
-BATCH_SIZE = 1024 # Adjusted batch size
-LR_RATE = 1e-3
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "mps")
+INPUT_DIM = 200  # Adjusted input dimension to match your complex data
+H_DIM = 200
+Z_DIM = 2
+NUM_EPOCHS = 1000
+BATCH_SIZE = 16 # Adjusted batch size
+LR_RATE = 5e-3
+
+# Assuming you have a PyTorch model called VariationalAutoEncoder defined in 'model.py'
+model = DeepVariationalAutoEncoder(INPUT_DIM, H_DIM, Z_DIM).to(DEVICE)
+optimizer = optim.Adam(model.parameters(), lr=LR_RATE)
+#scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
+#optimizer = optim.Adagrad(model.parameters(), lr=LR_RATE)
+#loss_fn = nn.BCELoss(reduction="sum")  # You might want to use a different loss function
+#loss_fn = nn.L1Loss(reduction="sum")
+loss_fn = nn.MSELoss(reduction="sum")
+
 
 # Load the dataset to a 777x4x1000 data called conformalWeldings
 # Load the .mat file
 #with h5py.File('./VAE/preprocessed2.mat', 'r') as mat_file:
 
 #with h5py.File('./VAE/preprocessed_normalized.mat', 'r') as mat_file:
-MAT_PATH = '../data/preprocessed.mat'
+with h5py.File('./VAE/preprocessed(theta_ma+bias,1iteration).mat', 'r') as mat_file:
+    # Access the 'bc_dict' group
+    bc_dict_group = mat_file['bc_dict']
 
-def load_cw(mat_path):
-    with h5py.File(mat_path, 'r') as mat_file:
-        # Access the 'bc_dict' group
-        bc_dict_group = mat_file['bc_dict']
-        # Initialize a 3D NumPy array to store theta
-        conformalWeldings = np.empty((len(bc_dict_group), 100), dtype=np.float32)  # Use float32 instead of complex128
+    # Initialize a 3D NumPy array to store theta
+    conformalWeldings = np.empty((len(bc_dict_group), 1, 200), dtype=np.float32)  # Use float32 instead of complex128
 
-        # Iterate over the fields (e.g., 'Case00_12', 'Case00_13', etc.)
-        for i, field_name in enumerate(bc_dict_group):
-            case_group = bc_dict_group[field_name]
-            # xq = case_group['x'][:]  # Load the 'x' dataset into a structured array
-            # yq = case_group['y'][:]  # Load the 'y' dataset into a structured array
-            theta = case_group['theta'][:]  # Load the 'theta' dataset into a structured array
-            theta = np.insert(theta, 0, 0)
-            theta = np.diff(theta) # Use diff between theta to train
-            # theta_ma = case_group['theta_ma'][:]  # Load the 'theta_ma' dataset into a structured array
-            # theta_ma = np.insert(theta_ma, 0, 0)
-            # theta_ma = np.diff(theta_ma)
-            # bias = case_group['bias'][:]  # Load the 'bias' dataset into a structured array
-            
-            conformalWeldings[i] = theta # Correspond theta and bias together
-    return conformalWeldings
+    # Iterate over the fields (e.g., 'Case00_12', 'Case00_13', etc.)
+    for i, field_name in enumerate(bc_dict_group):
+        case_group = bc_dict_group[field_name]
+        xq = case_group['x'][:]  # Load the 'x' dataset into a structured array
+        yq = case_group['y'][:]  # Load the 'y' dataset into a structured array
+        theta = case_group['theta'][:]  # Load the 'theta' dataset into a structured array
+        theta = np.insert(theta, 0, 0)
+        theta = np.diff(theta) # Use diff between theta to train
+        theta_ma = case_group['theta_ma'][:]  # Load the 'theta_ma' dataset into a structured array
+        theta_ma = np.insert(theta_ma, 0, 0)
+        theta_ma = np.diff(theta_ma)
+        bias = case_group['bias'][:]  # Load the 'bias' dataset into a structured array
+        
+        conformalWeldings[i, :, :100] = theta # Correspond theta and bias together
+        conformalWeldings[i, :, -100:] = bias 
+
+        # Store the real and imaginary parts separately
+        # conformalWeldings[i, 0, :] = np.abs(xq['real'])
+        # conformalWeldings[i, 1, :] = np.abs(xq['imag'])
+        
+        #conformalWeldings[i, 0, :] = np.abs(yq['real']).astype(float)
+        #conformalWeldings[i, 1, :] = np.abs(yq['imag']).astype(float)
+        
+        #conformalWeldings[i, 0, :] = yq['real'].astype(float)
+        #conformalWeldings[i, 1, :] = yq['imag'].astype(float)
+
+        
 
 # Assuming you have your 777x2x1000 data stored in a NumPy array named 'conformalWeldings'
 #conformalWeldings = conformalWeldings[:10, :, :]
+conformalWeldings = torch.tensor(conformalWeldings).to(DEVICE) 
 
-def main():
-    cw = load_cw(MAT_PATH)
-    cw_tensor = torch.tensor(cw).to(DEVICE)
 
-    train_data = TensorDataset(cw_tensor)
-    train_loader = DataLoader(dataset=train_data, batch_size=BATCH_SIZE, shuffle=True)
 
+# Create a DataLoader for your dataset
+train_data = TensorDataset(conformalWeldings)
+train_loader = DataLoader(dataset=train_data, batch_size=BATCH_SIZE, shuffle=True)
+
+# Start Training
+for epoch in range(NUM_EPOCHS):
+    adjust_learning_rate(optimizer, epoch)
+    loop = tqdm(enumerate(train_loader))
     
-    model = ResVariationalAutoEncoder(input_dim=INPUT_DIM, h_dim=H_DIM, h_layers=H_LAYERS, z_dim=Z_DIM).to(DEVICE)
-    optimizer = optim.Adam(model.parameters(), lr=LR_RATE, weight_decay=1e-5, betas=(0.9, 0.999))
+    reconstruction_losses = []  # To store reconstruction losses
+    reconstruction_diff_losses = []  # To store reconstruction diff losses
+    kl_div_losses = []         # To store KL divergence losses
 
-    model.to(DEVICE)
-    kl_rate = 0.01
-    
-    # Start Training
-    model.train()
-    
-    loader_size = len(train_loader)
-    loss_list = np.zeros(loader_size)  # To store reconstruction diff losses
-    recon_loss_list = np.zeros(loader_size)  # To store reconstruction losses
-    kl_loss_list = np.zeros(loader_size)         # To store KL divergence losses
-
-    for epoch in range(NUM_EPOCHS):
-        for i, [cw] in enumerate(train_loader):
-            cw = cw.to(DEVICE, dtype=torch.float32).view(cw.shape[0], INPUT_DIM)
-            x_reconstructed, mu, sigma = model(cw)
+    for i, batch in loop:
+        for x in batch:
+            # Forward Pass
+            x = x.to(DEVICE, dtype=torch.float32).view(x.shape[0], INPUT_DIM)
+            x_reconstructed, mu, sigma = model(x)
 
             # Compute loss
-            loss, recon_loss, kl_loss = model.loss(x_reconstructed, cw, mu, sigma, kl_rate)
+            reconstruction_loss = loss_fn(x_reconstructed, x)
+            reconstruction_diff_loss = loss_fn(torch.diff(x_reconstructed, dim=1), torch.diff(x, dim=1))
+            kl_div = -torch.sum(1 + torch.log(sigma.pow(2)) - mu.pow(2) - sigma.pow(2))
 
             # Backprop
+            #loss = model.alpha * reconstruction_loss + (1-model.alpha) * kl_div
+            #loss = kl_div
+            #loss = reconstruction_loss
+            loss = reconstruction_loss + 0.2 * kl_div
+            #loss = reconstruction_loss + 0.1*reconstruction_diff_loss + 0.1 * kl_div
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            
+            loop.set_postfix(loss=loss.item())
+
             # Append losses to the lists
-            loss_list[i] = loss.item()
-            recon_loss_list[i] = recon_loss.item()
-            kl_loss_list[i] = kl_loss.item()
+            reconstruction_losses.append(reconstruction_loss.item())
+            reconstruction_diff_losses.append(reconstruction_diff_loss.item())
+            kl_div_losses.append(kl_div.item())
 
-        # Calculate and print average losses for this epoch
-        avg_loss = loss_list.mean()
-        avg_recon_loss = recon_loss_list.mean()
-        avg_kl_loss = kl_loss_list.mean()
+    # Calculate and print average losses for this epoch
+    avg_reconstruction_loss = sum(reconstruction_losses) / len(reconstruction_losses)
+    avg_reconstruction_diff_loss = sum(reconstruction_diff_losses) / len(reconstruction_diff_losses)
+    avg_kl_div_loss = sum(kl_div_losses) / len(kl_div_losses)
+    print(f"Epoch {epoch+1}/{NUM_EPOCHS}, Alpha: {model.alpha.item():.4f}, Learning Rate: {optimizer.param_groups[0]['lr']:.1e}")
+    print(f"Reconstruction Loss: {avg_reconstruction_loss:.4f}, Reconstruction Diff Loss: {avg_reconstruction_diff_loss:.4f}, KL Divergence Loss: {avg_kl_div_loss:.4f}")
 
-        if epoch % 10 == 0:
-            print(f"Epoch {epoch}/{NUM_EPOCHS} | Loss: {avg_loss:.4f}, Reconstruction: {avg_recon_loss:.4f}, KL: {avg_kl_loss:.4f}")
-            
-        if epoch % 100 == 0:
-            torch.save(model, './VAE_theta+bias1.pth')
+
+
+
+model = model.to("mps")
+
+#torch.save(model, './VAE_bias.pth')
+torch.save(model, './VAE_theta+bias1.pth')
