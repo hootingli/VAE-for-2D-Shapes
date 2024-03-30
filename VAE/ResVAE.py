@@ -61,7 +61,10 @@ class ResVariationalAutoEncoder(nn.Module):
         for layer in self.decoder_layers:
             h = layer(h)
         h = self.hid2img(h)
-        return torch.sigmoid(h)
+        h = torch.sigmoid(h)
+        # normalize the output
+        h = h / torch.sum(h, dim=1, keepdim=True) * 2 * torch.pi
+        return h
         #return torch.tanh(self.hid_2img(h))
         #return self.hid_2img(h)  # No activation
 
@@ -88,3 +91,9 @@ class ResVariationalAutoEncoder(nn.Module):
         kl_loss = 0.5 * torch.sum(kl_loss, dim=1).mean()
         loss = recon_loss + kl_rate * kl_loss
         return loss, recon_loss, kl_loss
+    
+    def initial(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                nn.init.constant_(m.bias, 0)

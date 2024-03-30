@@ -8,3 +8,4 @@ hbs.zip
 .DS_Store
 *.pyc
 .python-version
+.ipynb_checkpoints

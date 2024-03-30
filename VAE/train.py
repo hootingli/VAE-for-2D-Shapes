@@ -35,13 +35,12 @@ def load_cw(mat_path):
             # xq = case_group['x'][:]  # Load the 'x' dataset into a structured array
             # yq = case_group['y'][:]  # Load the 'y' dataset into a structured array
             theta = case_group['theta'][:]  # Load the 'theta' dataset into a structured array
-            theta = np.insert(theta, 0, 0)
+            theta = np.insert(theta, 100, 2*np.pi)
             theta = np.diff(theta) # Use diff between theta to train
             # theta_ma = case_group['theta_ma'][:]  # Load the 'theta_ma' dataset into a structured array
             # theta_ma = np.insert(theta_ma, 0, 0)
             # theta_ma = np.diff(theta_ma)
             # bias = case_group['bias'][:]  # Load the 'bias' dataset into a structured array
-            
             conformalWeldings[i] = theta # Correspond theta and bias together
     return conformalWeldings
 
