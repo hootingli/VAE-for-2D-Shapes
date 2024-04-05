@@ -41,7 +41,7 @@ def load_cw(mat_path):
             # theta_ma = np.insert(theta_ma, 0, 0)
             # theta_ma = np.diff(theta_ma)
             # bias = case_group['bias'][:]  # Load the 'bias' dataset into a structured array
-            conformalWeldings[i] = theta # Correspond theta and bias together
+            conformalWeldings[i] = np.log(1/theta) # Correspond theta and bias together
     return conformalWeldings
 
 # Assuming you have your 777x2x1000 data stored in a NumPy array named 'conformalWeldings'
@@ -72,10 +72,10 @@ def main():
     for epoch in range(NUM_EPOCHS):
         for i, [cw] in enumerate(train_loader):
             cw = cw.to(DEVICE, dtype=torch.float32).view(cw.shape[0], INPUT_DIM)
-            x_reconstructed, mu, sigma = model(cw)
+            x_reconstructed, mu, log_var = model(cw)
 
             # Compute loss
-            loss, recon_loss, kl_loss = model.loss(x_reconstructed, cw, mu, sigma, kl_rate)
+            loss, recon_loss, kl_loss = model.loss(x_reconstructed, cw, mu, log_var, kl_rate)
 
             # Backprop
             optimizer.zero_grad()
